@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# Script for setting up a TCP proxy for starting/stopping Terraria server
+# machine based on the incoming requests.
+#
+# Example: sudo ./setup_terraria_proxy.sh
+
+INSTALL_DIR="/var/terraria-proxy"
+GCP_ZONE="${GCP_ZONE}"
+GCP_TERRARIA_SERVER_NAME="${TERRARIA_SERVER_NAME}"
+
+PROXY_REPO_URL="https://github.com/axcornea/wakeup-vm-by-tcp"
+
+# Install utils
+apt-get install -y git python3.10 tmux
+
+# Prepare area
+mkdir -p $${INSTALL_DIR}
+
+# Install proxy server
+cd $${INSTALL_DIR}
+git clone $${PROXY_REPO_URL} proxy-server
+
+# Setup hooks
+mkdir hooks
+cat <<EOF >hooks/start_hook.sh
+#!/bin/bash
+
+echo "Starting server instance..."
+gcloud compute instances start --zone=$${GCP_ZONE} $${GCP_TERRARIA_SERVER_NAME}
+
+echo "Waiting 30secs for server to start."
+sleep 30
+EOF
+chmod a+x hooks/start_hook.sh
+
+cat <<EOF >hooks/stop_hook.sh
+#!/bin/bash
+
+echo "Stopping server instance..."
+gcloud compute instances stop --zone=$${GCP_ZONE} $${GCP_TERRARIA_SERVER_NAME}
+EOF
+chmod a+x hooks/stop_hook.sh
+
+# Add startup script
+cat <<EOF >start_proxy.sh
+#!/bin/bash
+
+python3.10 proxy-server/server.py \
+	--proxy-port=7777 \
+	--target-ip=$${GCP_TERRARIA_SERVER_NAME} \
+	--target-port=7777 \
+	--cooldown-period=15 \
+	--hook-start-svc=hooks/start_server.sh \
+	--hook-stop-svc=hooks/stop_server.sh
+EOF
+chmod a+x start_proxy.sh
+
+# Setup systemd unit
+cat <<EOF >/etc/systemd/system/terraria-proxy.service
+[Unit]
+Description=Proxy to a Terraria server
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/tmux new-session -d -s terraria_proxy -c $${INSTALL_DIR} "./start_proxy.sh"
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Start the proxy
+systemctl daemon-reload
+systemctl enable --now terraria-proxy

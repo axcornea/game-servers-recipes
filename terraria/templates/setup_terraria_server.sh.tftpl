@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# Script for setting up a Terraria server on the machine.
+#
+# Example: sudo ./setup_terraria_server.sh
+
+INSTALL_DIR="/var/terraria"
+TERRARIA_USER="terraria"
+TERRARIA_VERSION="1449"
+
+TERRARIA_SERVER_DOWNLOAD_URL="https://terraria.org/api/download/pc-dedicated-server/terraria-server-$${TERRARIA_VERSION}.zip"
+
+# Install utils
+apt-get install -y unzip wget tmux
+
+# Preparing the area
+mkdir -p $${INSTALL_DIR}
+
+# Setup server
+cd $${INSTALL_DIR}
+wget $${TERRARIA_SERVER_DOWNLOAD_URL} -O terraria.zip
+unzip terraria.zip
+mv $${TERRARIA_VERSION}/Linux/* .
+chmod a+x ./TerrariaServer.bin.x86_64
+rm -rf $${TERRARIA_VERSION} terraria.zip
+
+# Add startup script
+cat <<EOF >start_server.sh
+#!/bin/bash
+./TerrariaServer.bin.x86_64 -config server_config.txt
+EOF
+chmod a+x start_server.sh
+
+# Add default config
+cat <<EOF >server_config.txt
+port=7777
+worldpath=./worlds/
+# password=<PASSWORD>
+# world=./worlds/My_World.wld
+EOF
+
+# Setup systemd unit
+cat <<EOF >/etc/systemd/system/terraria-server.service
+[Unit]
+Description=Terraria server
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/tmux new-session -d -s terraria_server -c $${INSTALL_DIR} "./start_server.sh"
+ExecStop=/usr/bin/tmux send-keys -t terraria_server "exit" ENTER
+KillMode=none
+User=$${TERRARIA_USER}
+Group=$${TERRARIA_USER}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Setup user
+useradd -m $${TERRARIA_USER}
+chsh -s /usr/bin/bash $${TERRARIA_USER}
+chown -R $${TERRARIA_USER}:$${TERRARIA_USER} $${INSTALL_DIR}
+
+# Start the server
+systemctl daemon-reload
+systemctl enable --now terraria-server
