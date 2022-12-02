@@ -26,19 +26,16 @@ mkdir hooks
 cat <<EOF >hooks/start_hook.sh
 #!/bin/bash
 
-echo "Starting server instance..."
-gcloud compute instances start --zone=$${GCP_ZONE} $${GCP_TERRARIA_SERVER_NAME}
-
-echo "Waiting 30secs for server to start."
-sleep 30
+echo "Resuming server instance..."
+gcloud compute instances resume --zone=$${GCP_ZONE} $${GCP_TERRARIA_SERVER_NAME}
 EOF
 chmod a+x hooks/start_hook.sh
 
 cat <<EOF >hooks/stop_hook.sh
 #!/bin/bash
 
-echo "Stopping server instance..."
-gcloud compute instances stop --zone=$${GCP_ZONE} $${GCP_TERRARIA_SERVER_NAME}
+echo "Suspending server instance..."
+gcloud compute instances suspend --zone=$${GCP_ZONE} $${GCP_TERRARIA_SERVER_NAME}
 EOF
 chmod a+x hooks/stop_hook.sh
 
